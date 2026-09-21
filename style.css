@@ -1,40 +1,63 @@
-/* Réinitialisation des styles de base */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-/* Style du corps de la page */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #1a1a1a;
+    background-color: #000000;
     color: #ffffff;
-    line-height: 1.6;
-    padding: 20px;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
-/* Conteneur principal */
 .container {
-    max-width: 1920px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
-/* En-tête */
-header {
     text-align: center;
-    margin-bottom: 30px;
+    width: 100%;
+    max-width: 1920px;
+    padding: 20px;
 }
 
 header h1 {
     font-size: 48px;
-    color: #ff0000; /* Rouge Tesla */
+    color: #ff0000;
+    margin-bottom: 50px;
 }
 
-/* Section principale */
-main {
-    display: flex;
+.speed-display {
+    font-size: 200px;
+    font-weight: bold;
+    color: #ffffff;
+    line-height: 1;
+}
+
+.unit {
+    font-size: 60px;
+    color: #ffcc00;
+    margin-left: 10px;
+}
+
+/* Adaptation pour les écrans Tesla */
+@media (max-width: 1920px) {
+    .speed-display {
+        font-size: 180px;
+    }
+    .unit {
+        font-size: 50px;
+    }
+}
+
+@media (max-width: 1500px) {
+    .speed-display {
+        font-size: 150px;
+    }
+    .unit {
+        font-size: 40px;
+    }
+}    display: flex;
     flex-direction: column;
     gap: 30px;
 }
