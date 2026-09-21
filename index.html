@@ -3,38 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mon Site Tesla</title>
+    <title>Vitesse Tesla</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🚗 Bienvenue sur mon site Tesla</h1>
+            <h1>🚗 Vitesse actuelle</h1>
         </header>
-
         <main>
-            <section class="time-section">
-                <h2>Heure actuelle : <span id="current-time">--:--:--</span></h2>
-            </section>
-
-            <section class="message-section">
-                <h2>Message du jour</h2>
-                <p id="message">Prêt à rouler ! 💨</p>
-            </section>
-
-            <section class="tesla-info">
-                <h2>Informations Tesla</h2>
-                <div class="info-grid">
-                    <div class="info-card">
-                        <h3>🔋 Niveau de batterie</h3>
-                        <p id="battery-level">--%</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>📍 Localisation</h3>
-                        <p id="location">Non disponible</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>🌡️ Température extérieure</h3>
+            <div class="speed-display">
+                <span id="speed">0</span>
+                <span class="unit">km/h</span>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>                        <h3>🌡️ Température extérieure</h3>
                         <p id="temperature">--°C</p>
                     </div>
                 </div>
