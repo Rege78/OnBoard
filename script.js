@@ -4,8 +4,10 @@ let speedHistory = [];
 let accelerationHistory = [];
 let timeHistory = [];
 let speedChart = null;
+let accelerationChart = null;
+let currentMaxDataPoints = 60;
 
-const MAX_HISTORY = 60; // Garde 60 points d'historique
+const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
 
 function updateSpeed() {
     if ("geolocation" in navigator) {
@@ -29,15 +31,15 @@ function updateSpeed() {
                     accelerationHistory.push(Math.round(acceleration * 100) / 100);
                     timeHistory.push(timeLabel);
 
-                    // Limiter l'historique
+                    // Limiter l'historique complet
                     if (speedHistory.length > MAX_HISTORY) {
                         speedHistory.shift();
                         accelerationHistory.shift();
                         timeHistory.shift();
                     }
 
-                    // Mise à jour du graphique
-                    updateChart();
+                    // Mise à jour des graphiques
+                    updateCharts();
                 }
 
                 currentPosition = position.coords;
@@ -85,34 +87,38 @@ function updateDetailsDisplay() {
     if (headingEl) headingEl.textContent = heading;
 }
 
-function initChart() {
-    const ctx = document.getElementById("speedChart");
-    if (!ctx) return;
+function getVisibleData() {
+    // Retourne les N derniers points selon la sélection
+    const startIndex = Math.max(0, speedHistory.length - currentMaxDataPoints);
+    return {
+        labels: timeHistory.slice(startIndex),
+        speed: speedHistory.slice(startIndex),
+        acceleration: accelerationHistory.slice(startIndex)
+    };
+}
 
-    speedChart = new Chart(ctx, {
+function initCharts() {
+    const speedCtx = document.getElementById("speedChart");
+    const accelerationCtx = document.getElementById("accelerationChart");
+    
+    if (!speedCtx || !accelerationCtx) return;
+
+    const visibleData = getVisibleData();
+
+    // Graphique Vitesse
+    speedChart = new Chart(speedCtx, {
         type: 'line',
         data: {
-            labels: timeHistory,
+            labels: visibleData.labels,
             datasets: [
                 {
                     label: '💨 Vitesse (km/h)',
-                    data: speedHistory,
+                    data: visibleData.speed,
                     borderColor: 'rgb(255, 45, 45)',
                     backgroundColor: 'rgba(255, 45, 45, 0.1)',
                     borderWidth: 2,
                     tension: 0.3,
-                    fill: true,
-                    yAxisID: 'y'
-                },
-                {
-                    label: '⚡ Accélération (m/s²)',
-                    data: accelerationHistory,
-                    borderColor: 'rgb(255, 204, 0)',
-                    backgroundColor: 'rgba(255, 204, 0, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    fill: true,
-                    yAxisID: 'y1'
+                    fill: true
                 }
             ]
         },
@@ -157,18 +163,64 @@ function initChart() {
                         color: 'rgb(255, 45, 45)',
                         font: { size: 10 }
                     }
+                }
+            }
+        }
+    });
+
+    // Graphique Accélération
+    accelerationChart = new Chart(accelerationCtx, {
+        type: 'line',
+        data: {
+            labels: visibleData.labels,
+            datasets: [
+                {
+                    label: '⚡ Accélération (m/s²)',
+                    data: visibleData.acceleration,
+                    borderColor: 'rgb(255, 204, 0)',
+                    backgroundColor: 'rgba(255, 204, 0, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        font: { size: 12 }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.05)'
+                    },
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.6)',
+                        font: { size: 10 }
+                    }
                 },
-                y1: {
+                y: {
                     type: 'linear',
                     display: true,
-                    position: 'right',
+                    position: 'left',
                     title: {
                         display: true,
                         text: 'Accélération (m/s²)',
                         color: 'rgb(255, 204, 0)'
                     },
                     grid: {
-                        drawOnChartArea: false
+                        color: 'rgba(255, 255, 255, 0.05)'
                     },
                     ticks: {
                         color: 'rgb(255, 204, 0)',
@@ -180,13 +232,18 @@ function initChart() {
     });
 }
 
-function updateChart() {
-    if (!speedChart) return;
+function updateCharts() {
+    if (!speedChart || !accelerationChart) return;
     
-    speedChart.data.labels = timeHistory;
-    speedChart.data.datasets[0].data = speedHistory;
-    speedChart.data.datasets[1].data = accelerationHistory;
+    const visibleData = getVisibleData();
+    
+    speedChart.data.labels = visibleData.labels;
+    speedChart.data.datasets[0].data = visibleData.speed;
     speedChart.update('none');
+    
+    accelerationChart.data.labels = visibleData.labels;
+    accelerationChart.data.datasets[0].data = visibleData.acceleration;
+    accelerationChart.update('none');
 }
 
 function initSidebar() {
@@ -217,9 +274,9 @@ function initSidebar() {
             if (target) {
                 target.style.display = "block";
                 
-                // Initialiser le graphique la première fois qu'on accède à la page
+                // Initialiser les graphiques la première fois qu'on accède à la page
                 if (page.id === "graph" && !speedChart) {
-                    setTimeout(initChart, 100);
+                    setTimeout(initCharts, 100);
                 }
             }
 
@@ -257,6 +314,16 @@ function initSidebar() {
     }
 }
 
+function initDataPointsSelector() {
+    const selector = document.getElementById("dataPointsSelect");
+    if (!selector) return;
+    
+    selector.addEventListener("change", (e) => {
+        currentMaxDataPoints = parseInt(e.target.value);
+        updateCharts();
+    });
+}
+
 function updateTime() {
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, "0");
@@ -269,5 +336,6 @@ window.addEventListener("load", () => {
     updateSpeed();
     updateTime();
     initSidebar();
+    initDataPointsSelector();
     setInterval(updateTime, 60000);
 });
