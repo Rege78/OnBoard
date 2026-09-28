@@ -8,6 +8,9 @@ let accelerationChart = null;
 let currentMaxDataPoints = 60;
 
 const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
+const APP_VERSION = "1.0.0";
+const REPO_OWNER = "Rege78";
+const REPO_NAME = "OnBoard";
 
 function updateSpeed() {
     if ("geolocation" in navigator) {
@@ -332,10 +335,40 @@ function updateTime() {
     if (timeEl) timeEl.textContent = `${hours}:${minutes}`;
 }
 
+// Formater la date au format français
+function formatDateFR(dateString) {
+    const date = new Date(dateString);
+    const options = { year: 'numeric', month: 'short', day: 'numeric' };
+    return date.toLocaleDateString('fr-FR', options);
+}
+
+// Récupérer et afficher les infos du dernier commit
+async function updateFooter() {
+    try {
+        const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=1`);
+        if (!response.ok) throw new Error('Erreur API GitHub');
+        
+        const commits = await response.json();
+        if (commits.length > 0) {
+            const lastCommitDate = commits[0].commit.author.date;
+            const formattedDate = formatDateFR(lastCommitDate);
+            const footerEl = document.getElementById("footerText");
+            
+            if (footerEl) {
+                footerEl.textContent = `v${APP_VERSION} • ${formattedDate}`;
+            }
+        }
+    } catch (error) {
+        console.warn("Impossible de récupérer la date du dernier commit:", error);
+        // Garder la valeur par défaut en cas d'erreur
+    }
+}
+
 window.addEventListener("load", () => {
     updateSpeed();
     updateTime();
     initSidebar();
     initDataPointsSelector();
+    updateFooter();
     setInterval(updateTime, 60000);
 });
