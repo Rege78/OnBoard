@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OnBoard — Vitesse</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <button id="menuBtn" class="menu-btn" aria-label="Ouvrir le menu">☰</button>
@@ -66,6 +67,12 @@
                             <h3>🧭 Orientation</h3>
                             <p id="detail-heading">--</p>
                         </div>
+                    </div>
+                </section>
+
+                <section class="page" data-id="graph" id="page-graph" style="display: none;">
+                    <div class="graph-container">
+                        <canvas id="speedChart"></canvas>
                     </div>
                 </section>
             </main>

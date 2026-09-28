@@ -154,6 +154,20 @@ h1 {
     color: var(--text);
 }
 
+.graph-container {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: clamp(16px, 2vw, 24px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    min-height: 400px;
+}
+
+.graph-container canvas {
+    max-width: 100%;
+    max-height: 500px;
+}
+
 .menu-btn {
     position: fixed;
     top: 20px;
@@ -294,5 +308,9 @@ h1 {
 
     .details-grid {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .graph-container {
+        min-height: 300px;
     }
 }
