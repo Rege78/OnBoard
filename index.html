@@ -12,7 +12,7 @@
     <aside id="sidebar" class="sidebar" aria-hidden="true">
         <div class="sidebar-header">
             <h2>Menu</h2>
-            <button id="addPageBtn" class="add-page">＋</button>
+            <button id="addPageBtn" class="add-page" aria-label="Ajouter une page">＋</button>
         </div>
         <ul id="pagesList" class="pages-list" role="list"></ul>
     </aside>
@@ -21,11 +21,10 @@
         <div class="container">
             <header class="topbar">
                 <p class="eyebrow">Rege78</p>
-                <h1>Vitesse</h1>
+                <h1 id="pageTitle">Vitesse</h1>
             </header>
 
             <main class="dashboard" id="mainContent">
-                <!-- speed panel stays as the default page content -->
                 <section class="page" data-id="speed" id="page-speed">
                     <div class="speed-panel" aria-live="polite">
                         <div class="speed-display">
@@ -41,20 +40,41 @@
                     </div>
                 </section>
 
-                <!-- dynamic pages will be inserted here -->
+                <section class="page" data-id="details" id="page-details" style="display: none;">
+                    <div class="details-grid" aria-live="polite">
+                        <div class="detail-card">
+                            <h3>📍 Latitude</h3>
+                            <p id="detail-lat">--</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>📍 Longitude</h3>
+                            <p id="detail-lon">--</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>⛰️ Altitude</h3>
+                            <p id="detail-alt">--</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>🎯 Précision</h3>
+                            <p id="detail-accuracy">--</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>📐 Précision Alt.</h3>
+                            <p id="detail-alt-accuracy">--</p>
+                        </div>
+                        <div class="detail-card">
+                            <h3>🧭 Orientation</h3>
+                            <p id="detail-heading">--</p>
+                        </div>
+                    </div>
+                </section>
             </main>
 
             <footer class="footer">
-                <p>Site optimisé pour l'écran </p>
+                <p>Site optimisé pour l'écran</p>
             </footer>
         </div>
     </div>
-
-    <template id="page-template">
-        <section class="page">
-            <div class="content-card"></div>
-        </section>
-    </template>
 
     <script src="script.js"></script>
 </body>

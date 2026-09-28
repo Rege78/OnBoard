@@ -94,37 +94,30 @@ h1 {
     line-height: 1;
 }
 
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: clamp(12px, 1.5vw, 22px);
-}
-
-.info-card {
-    background: var(--card);
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    padding: clamp(16px, 2vw, 24px);
-    text-align: center;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    min-height: 150px;
+.meta-row {
     display: flex;
-    flex-direction: column;
     justify-content: center;
+    gap: clamp(12px, 2vw, 24px);
+    margin-top: clamp(18px, 3vw, 28px);
 }
 
-.info-card h2 {
-    font-size: clamp(1rem, 1.8vw, 2rem);
+.meta-card {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: clamp(12px, 1.5vw, 18px);
+    text-align: center;
+}
+
+.meta-card h3 {
+    font-size: clamp(0.85rem, 1.2vw, 1.1rem);
     color: var(--secondary);
-    margin-bottom: 12px;
-    font-weight: 700;
+    margin-bottom: 6px;
+    font-weight: 600;
 }
 
-.info-card p {
-    font-size: clamp(1.3rem, 2.4vw, 2.5rem);
+.meta-card p {
+    font-size: clamp(1rem, 1.8vw, 1.5rem);
     font-weight: 700;
-    line-height: 1.2;
-    word-break: break-word;
 }
 
 .details-grid {
@@ -161,7 +154,6 @@ h1 {
     color: var(--text);
 }
 
-/* Sidebar styles */
 .menu-btn {
     position: fixed;
     top: 20px;
@@ -279,15 +271,6 @@ h1 {
     color: var(--muted);
 }
 
-.footer a {
-    color: var(--secondary);
-    text-decoration: none;
-}
-
-.footer a:hover {
-    text-decoration: underline;
-}
-
 @media (max-width: 640px) {
     .shell {
         padding: 10px;
@@ -305,15 +288,11 @@ h1 {
         min-height: 100px;
     }
 
-    .info-card {
-        min-height: 120px;
+    .detail-card {
+        min-height: 100px;
     }
 
     .details-grid {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    }
-
-    .detail-card {
-        min-height: 100px;
     }
 }
