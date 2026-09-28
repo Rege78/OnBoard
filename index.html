@@ -3,29 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vitesse Tesla</title>
+    <title>OnBoard — Vitesse</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Vitesse :</h1>
-        </header>
-        <main>
-            <div class="speed-display">
-                <span id="speed">0</span>
-                <span class="unit">km/h</span>
-            </div>
-        </main>
-    </div>
-    <script src="script.js"></script>
-</body>
-</html> 
+    <button id="menuBtn" class="menu-btn" aria-label="Ouvrir le menu">☰</button>
+
+    <aside id="sidebar" class="sidebar" aria-hidden="true">
+        <div class="sidebar-header">
+            <h2>Menu</h2>
+            <button id="addPageBtn" class="add-page">＋</button>
+        </div>
+        <ul id="pagesList" class="pages-list" role="list"></ul>
+    </aside>
+
+    <div class="shell">
+        <div class="container">
+            <header class="topbar">
+                <p class="eyebrow">Tesla interface</p>
+                <h1>🚗 Vitesse actuelle</h1>
+            </header>
+
+            <main class="dashboard" id="mainContent">
+                <!-- speed panel stays as the default page content -->
+                <section class="page" data-id="speed" id="page-speed">
+                    <div class="speed-panel" aria-live="polite">
+                        <div class="speed-display">
+                            <span id="speed">0</span>
+                            <span class="unit">km/h</span>
+                        </div>
+                        <div class="meta-row">
+                            <div class="meta-card">
+                                <h3>🌡️ Température</h3>
+                                <p id="temperature">--°C</p>
+                            </div>
+                            <div class="meta-card">
+                                <h3>🕒 Heure</h3>
+                                <p id="time">--:--</p>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </section>
-        </main>
+                </section>
+
+                <!-- dynamic pages will be inserted here -->
+            </main>
+
+            <footer class="footer">
+                <p>Site optimisé pour l'écran Tesla | <a href="https://github.com/Rege78/OnBoard">GitHub</a></p>
+            </footer>
+        </div>
     </div>
+
+    <template id="page-template">
+        <section class="page">
+            <div class="content-card"></div>
+        </section>
+    </template>
 
     <script src="script.js"></script>
 </body>
