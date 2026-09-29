@@ -8,9 +8,24 @@ let accelerationChart = null;
 let currentMaxDataPoints = 60;
 
 const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
-const APP_VERSION = "1.0.0";
 const REPO_OWNER = "Rege78";
 const REPO_NAME = "OnBoard";
+
+// Récupérer le numéro de commit depuis l'API GitHub
+async function getCommitHash() {
+    try {
+        const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=1`);
+        if (!response.ok) throw new Error('Erreur API GitHub');
+        
+        const commits = await response.json();
+        if (commits.length > 0) {
+            return commits[0].sha.substring(0, 7); // Retourne les 7 premiers caractères
+        }
+    } catch (error) {
+        console.warn("Impossible de récupérer le numéro de commit:", error);
+    }
+    return "unknown";
+}
 
 function updateSpeed() {
     if ("geolocation" in navigator) {
@@ -318,7 +333,7 @@ function initSidebar() {
 }
 
 function initDataPointsSelector() {
-    const selector = document.getElementById("dataPointsSelect");
+    const selector = document.getElementById("dataPointsSelector");
     if (!selector) return;
     
     selector.addEventListener("change", (e) => {
@@ -342,25 +357,17 @@ function formatDateFR(dateString) {
     return date.toLocaleDateString('fr-FR', options);
 }
 
-// Récupérer et afficher les infos du dernier commit
+// Récupérer et afficher le numéro de commit dans le footer
 async function updateFooter() {
     try {
-        const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=1`);
-        if (!response.ok) throw new Error('Erreur API GitHub');
+        const commitHash = await getCommitHash();
+        const footerEl = document.getElementById("footerText");
         
-        const commits = await response.json();
-        if (commits.length > 0) {
-            const lastCommitDate = commits[0].commit.author.date;
-            const formattedDate = formatDateFR(lastCommitDate);
-            const footerEl = document.getElementById("footerText");
-            
-            if (footerEl) {
-                footerEl.textContent = `v${APP_VERSION} • ${formattedDate}`;
-            }
+        if (footerEl) {
+            footerEl.textContent = `${commitHash}`;
         }
     } catch (error) {
-        console.warn("Impossible de récupérer la date du dernier commit:", error);
-        // Garder la valeur par défaut en cas d'erreur
+        console.warn("Impossible de récupérer le numéro de commit:", error);
     }
 }
 
