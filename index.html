@@ -6,6 +6,7 @@
     <title>OnBoard — Vitesse</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gaugeJS"></script>
 </head>
 <body>
     <button id="menuBtn" class="menu-btn" aria-label="Ouvrir le menu">☰</button>
@@ -73,6 +74,18 @@
                     <div class="graph-container">
                         <canvas id="speedChart"></canvas>
                         <canvas id="accelerationChart"></canvas>
+                    </div>
+                </section>
+
+                <section class="page" data-id="gauges" id="page-gauges" style="display: none;">
+                    <div class="gauges-container">
+                        <div class="gauge-card">
+                            <h3>⚡ G-Mètre</h3>
+                            <div class="gauge-wrapper">
+                                <canvas id="gMeterGauge" class="gauge-canvas"></canvas>
+                                <div id="gMeterValue" class="gauge-value">0.0g</div>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </main>
