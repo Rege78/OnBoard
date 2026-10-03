@@ -1,13 +1,18 @@
 let currentPosition = null;
-let lastSpeed = 0;
+let lastSpeedMs = null;
+let lastPositionTime = null;
 let speedHistory = [];
 let accelerationHistory = [];
 let timeHistory = [];
 let speedChart = null;
 let accelerationChart = null;
+let gMeterGauge = null;
 let currentMaxDataPoints = 60;
 
 const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
+const GRAVITY = 9.81; // Pesanteur (m/s²)
+const G_METER_MIN = -1.5; // Plage d'affichage du G-mètre (en g)
+const G_METER_MAX = 1.5;
 const REPO_OWNER = "Rege78";
 const REPO_NAME = "OnBoard";
 
@@ -16,7 +21,7 @@ async function getCommitHash() {
     try {
         const response = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/commits?per_page=1`);
         if (!response.ok) throw new Error('Erreur API GitHub');
-        
+
         const commits = await response.json();
         if (commits.length > 0) {
             return commits[0].sha.substring(0, 7); // Retourne les 7 premiers caractères
@@ -32,21 +37,30 @@ function updateSpeed() {
         navigator.geolocation.watchPosition(
             (position) => {
                 const speed = position.coords.speed;
+                const timestamp = position.timestamp;
+
                 if (speed !== null) {
                     const speedKmh = Math.round(speed * 3.6);
                     const speedEl = document.getElementById("speed");
                     if (speedEl) speedEl.textContent = speedKmh;
 
-                    // Calcul de l'accélération (variation de vitesse en m/s²)
-                    const acceleration = speed - lastSpeed;
-                    lastSpeed = speed;
+                    // Accélération réelle : variation de vitesse / durée écoulée (m/s²)
+                    let acceleration = null;
+                    if (lastSpeedMs !== null) {
+                        const dt = (timestamp - lastPositionTime) / 1000;
+                        if (dt > 0.1 && dt < 5) {
+                            acceleration = (speed - lastSpeedMs) / dt;
+                        }
+                    }
+                    lastSpeedMs = speed;
+                    lastPositionTime = timestamp;
 
                     // Mise à jour de l'historique
                     const now = new Date();
                     const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
                     speedHistory.push(speedKmh);
-                    accelerationHistory.push(Math.round(acceleration * 100) / 100);
+                    accelerationHistory.push(acceleration !== null ? Math.round(acceleration * 10) / 10 : null);
                     timeHistory.push(timeLabel);
 
                     // Limiter l'historique complet
@@ -56,8 +70,13 @@ function updateSpeed() {
                         timeHistory.shift();
                     }
 
-                    // Mise à jour des graphiques
+                    // Mise à jour des graphiques et du G-mètre
                     updateCharts();
+                    updateGMeter(acceleration);
+                } else {
+                    // Perte de vitesse GPS : réinitialisation pour éviter les faux pics
+                    lastSpeedMs = null;
+                    lastPositionTime = null;
                 }
 
                 currentPosition = position.coords;
@@ -118,7 +137,7 @@ function getVisibleData() {
 function initCharts() {
     const speedCtx = document.getElementById("speedChart");
     const accelerationCtx = document.getElementById("accelerationChart");
-    
+
     if (!speedCtx || !accelerationCtx) return;
 
     const visibleData = getVisibleData();
@@ -186,7 +205,7 @@ function initCharts() {
         }
     });
 
-    // Graphique Accélération
+    // Graphique Accélération (m/s²)
     accelerationChart = new Chart(accelerationCtx, {
         type: 'line',
         data: {
@@ -199,7 +218,8 @@ function initCharts() {
                     backgroundColor: 'rgba(255, 204, 0, 0.1)',
                     borderWidth: 2,
                     tension: 0.3,
-                    fill: true
+                    fill: true,
+                    spanGaps: true
                 }
             ]
         },
@@ -252,16 +272,67 @@ function initCharts() {
 
 function updateCharts() {
     if (!speedChart || !accelerationChart) return;
-    
+
     const visibleData = getVisibleData();
-    
+
     speedChart.data.labels = visibleData.labels;
     speedChart.data.datasets[0].data = visibleData.speed;
     speedChart.update('none');
-    
+
     accelerationChart.data.labels = visibleData.labels;
     accelerationChart.data.datasets[0].data = visibleData.acceleration;
     accelerationChart.update('none');
+}
+
+// --- G-Mètre ---
+
+function initGMeter() {
+    const canvas = document.getElementById("gMeterGauge");
+    if (!canvas || typeof Gauge === "undefined") return;
+
+    gMeterGauge = new Gauge(canvas);
+    gMeterGauge.setOptions({
+        angle: -0.25,
+        lineWidth: 0.08,
+        radiusScale: 0.95,
+        pointer: {
+            length: 0.55,
+            strokeWidth: 0.04,
+            color: "#ff2d2d"
+        },
+        limitMax: false,
+        limitMin: false,
+        strokeColor: "#2a2a2a",
+        generateGradient: true,
+        highDpiSupport: true,
+        staticZones: [
+            { strokeStyle: "#e74c3c", min: -1.5, max: -1.0 },
+            { strokeStyle: "#f1c40f", min: -1.0, max: -0.4 },
+            { strokeStyle: "#2ecc71", min: -0.4, max: 0.4 },
+            { strokeStyle: "#f1c40f", min: 0.4, max: 1.0 },
+            { strokeStyle: "#e74c3c", min: 1.0, max: 1.5 }
+        ]
+    });
+    gMeterGauge.setMinValue(G_METER_MIN);
+    gMeterGauge.setMaxValue(G_METER_MAX);
+    gMeterGauge.animationSpeed = 12;
+    gMeterGauge.set(0);
+}
+
+function updateGMeter(acceleration) {
+    if (acceleration === null) return;
+
+    const g = acceleration / GRAVITY;
+    const valueEl = document.getElementById("gMeterValue");
+    if (valueEl) {
+        valueEl.textContent = `${g >= 0 ? "+" : ""}${g.toFixed(2)}g`;
+    }
+
+    if (gMeterGauge) {
+        // On borne l'affichage à la plage du cadran
+        const clamped = Math.min(G_METER_MAX, Math.max(G_METER_MIN, g));
+        gMeterGauge.set(clamped);
+    }
 }
 
 function initSidebar() {
@@ -273,7 +344,8 @@ function initSidebar() {
     const pages = [
         { id: "speed", label: "💨 Vitesse", title: "Vitesse" },
         { id: "details", label: "📍 Détails GPS", title: "Détails GPS" },
-        { id: "graph", label: "📈 Graphiques", title: "Graphiques" }
+        { id: "graph", label: "📈 Graphiques", title: "Graphiques" },
+        { id: "gauges", label: "⚡ G-Mètre", title: "G-Mètre" }
     ];
 
     pages.forEach((page) => {
@@ -291,10 +363,13 @@ function initSidebar() {
             const target = document.getElementById(`page-${page.id}`);
             if (target) {
                 target.style.display = "block";
-                
-                // Initialiser les graphiques la première fois qu'on accède à la page
+
+                // Initialiser les graphiques / jauges à la première ouverture de la page
                 if (page.id === "graph" && !speedChart) {
                     setTimeout(initCharts, 100);
+                }
+                if (page.id === "gauges" && !gMeterGauge) {
+                    setTimeout(initGMeter, 100);
                 }
             }
 
@@ -335,7 +410,7 @@ function initSidebar() {
 function initDataPointsSelector() {
     const selector = document.getElementById("dataPointsSelector");
     if (!selector) return;
-    
+
     selector.addEventListener("change", (e) => {
         currentMaxDataPoints = parseInt(e.target.value);
         updateCharts();
@@ -362,7 +437,7 @@ async function updateFooter() {
     try {
         const commitHash = await getCommitHash();
         const footerEl = document.getElementById("footerText");
-        
+
         if (footerEl) {
             footerEl.textContent = `${commitHash}`;
         }
