@@ -1,6 +1,7 @@
 let currentPosition = null;
 let speedHistory = [];
 let accelerationHistory = [];
+let accelerationFilteredHistory = [];
 let timeHistory = [];
 let speedChart = null;
 let accelerationChart = null;
@@ -19,8 +20,10 @@ let lastClockTime = null;       // horloge du navigateur du dernier échantillon
 let lastLat = null;
 let lastLon = null;
 let accelBuffer = [];          // lissage court pour l'aiguille
+let emaAccel = null;           // accélération filtrée (moyenne exponentielle)
 
 const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
+const FILTER_TAU = 2.5; // Constante de temps du filtre d'accélération (s)
 const GRAVITY = 9.81; // Pesanteur (m/s²)
 const G_METER_MIN = -1.5; // Plage d'affichage du G-mètre (en g)
 const G_METER_MAX = 1.5;
@@ -111,14 +114,23 @@ function updateSpeed() {
                 const now = new Date();
                 const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
+                // Filtre passe-bas (moyenne exponentielle) : courbe lissée, légèrement retardée,
+                // mais débarrassée du bruit GPS. alpha s'adapte à l'intervalle réel entre 2 échantillons.
+                if (acceleration !== null && dt !== null) {
+                    const alpha = 1 - Math.exp(-dt / FILTER_TAU);
+                    emaAccel = (emaAccel === null) ? acceleration : emaAccel + alpha * (acceleration - emaAccel);
+                }
+
                 speedHistory.push(speedKmh);
                 accelerationHistory.push(acceleration !== null ? Math.round(acceleration * 10) / 10 : null);
+                accelerationFilteredHistory.push(emaAccel !== null ? Math.round(emaAccel * 10) / 10 : null);
                 timeHistory.push(timeLabel);
 
                 // Limiter l'historique complet
                 if (speedHistory.length > MAX_HISTORY) {
                     speedHistory.shift();
                     accelerationHistory.shift();
+                    accelerationFilteredHistory.shift();
                     timeHistory.shift();
                 }
 
@@ -182,7 +194,8 @@ function getVisibleData() {
     return {
         labels: timeHistory.slice(startIndex),
         speed: speedHistory.slice(startIndex),
-        acceleration: accelerationHistory.slice(startIndex)
+        acceleration: accelerationHistory.slice(startIndex),
+        filtered: accelerationFilteredHistory.slice(startIndex)
     };
 }
 
@@ -272,6 +285,18 @@ function initCharts() {
                     tension: 0.3,
                     fill: true,
                     spanGaps: true
+                },
+                {
+                    label: '🌀 Accélération filtrée (m/s²)',
+                    data: visibleData.filtered,
+                    borderColor: 'rgb(0, 191, 255)',
+                    backgroundColor: 'rgba(0, 191, 255, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    spanGaps: true,
+                    borderDash: [6, 3],
+                    pointRadius: 0
                 }
             ]
         },
@@ -333,6 +358,7 @@ function updateCharts() {
 
     accelerationChart.data.labels = visibleData.labels;
     accelerationChart.data.datasets[0].data = visibleData.acceleration;
+    accelerationChart.data.datasets[1].data = visibleData.filtered;
     accelerationChart.update('none');
 }
 
