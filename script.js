@@ -5,12 +5,10 @@ let accelerationFilteredHistory = [];
 let timeHistory = [];
 let speedChart = null;
 let accelerationChart = null;
-let gMeterCtx = null;          // contexte canvas du G-mètre (dessin natif)
-let gMeterDisplay = 0;         // valeur affichée par l'aiguille (lissée)
-let gMeterTarget = 0;           // valeur cible de l'aiguille
-let gMeterPeakMax = 0;         // record accélération (g)
+const gauges = {};             // jauges dessinées nativement : total, lon, lat
+let gMeterPeakMax = 0;         // record accélération longitudinale (g)
 let gMeterPeakMin = 0;         // record freinage (g)
-let gMeterAnimScheduled = false;
+let gaugeAnimScheduled = false;
 let currentMaxDataPoints = 60;
 
 // --- Suivi GPS ---
@@ -21,9 +19,12 @@ let lastLat = null;
 let lastLon = null;
 let accelBuffer = [];          // lissage court pour l'aiguille
 let emaAccel = null;           // accélération filtrée (moyenne exponentielle)
+let latAccelEma = null;        // accélération latérale filtrée (m/s²)
+let lastHeadingRad = null;     // dernier cap GPS (radians)
 
 const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
 const FILTER_TAU = 2.5; // Constante de temps du filtre d'accélération (s)
+const LAT_TAU = 1.5; // Constante de temps du filtre d'accélération latérale (s)
 const GRAVITY = 9.81; // Pesanteur (m/s²)
 const G_METER_MIN = -1.5; // Plage d'affichage du G-mètre (en g)
 const G_METER_MAX = 1.5;
@@ -121,6 +122,21 @@ function updateSpeed() {
                     emaAccel = (emaAccel === null) ? acceleration : emaAccel + alpha * (acceleration - emaAccel);
                 }
 
+                // Accélération latérale : vitesse × variation de cap / durée (m/s²)
+                let lateralAccel = null;
+                if (coords.heading !== null && lastHeadingRad !== null && dt !== null) {
+                    const headingRad = coords.heading * Math.PI / 180;
+                    let dTheta = headingRad - lastHeadingRad;
+                    dTheta = ((dTheta + Math.PI * 3) % (Math.PI * 2)) - Math.PI; // repliement -π..π
+                    const candidate = speed * (dTheta / dt);
+                    if (Math.abs(candidate) < 30) lateralAccel = candidate; // garde-fou
+                }
+                lastHeadingRad = (coords.heading !== null) ? coords.heading * Math.PI / 180 : null;
+                if (lateralAccel !== null && dt !== null) {
+                    const alphaLat = 1 - Math.exp(-dt / LAT_TAU);
+                    latAccelEma = (latAccelEma === null) ? lateralAccel : latAccelEma + alphaLat * (lateralAccel - latAccelEma);
+                }
+
                 speedHistory.push(speedKmh);
                 accelerationHistory.push(acceleration !== null ? Math.round(acceleration * 10) / 10 : null);
                 accelerationFilteredHistory.push(emaAccel !== null ? Math.round(emaAccel * 10) / 10 : null);
@@ -136,7 +152,7 @@ function updateSpeed() {
 
                 // Mise à jour des graphiques et du G-mètre
                 updateCharts();
-                updateGMeter(acceleration, speed, dt, speedSource);
+                updateGMeter(acceleration, lateralAccel, speed, dt, speedSource);
             } else {
                 // Perte de vitesse GPS : réinitialisation pour éviter les faux pics
                 lastSpeedMs = null;
@@ -362,20 +378,84 @@ function updateCharts() {
     accelerationChart.update('none');
 }
 
-// --- G-Mètre (dessin natif, sans librairie externe) ---
+// --- Jauges (dessin natif, sans librairie externe) ---
+
+function createGauge(canvas, min, max, leftLabel, rightLabel) {
+    // Résolution interne fixe : le CSS se charge de la mise à l'échelle
+    canvas.width = 300;
+    canvas.height = 300;
+    return {
+        ctx: canvas.getContext("2d"),
+        min,
+        max,
+        leftLabel,
+        rightLabel,
+        display: 0,
+        target: 0
+    };
+}
+
+function buildGaugeCard(title, canvasId, valueId) {
+    const card = document.createElement("div");
+    card.className = "gauge-card";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = title;
+    card.appendChild(h3);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "gauge-wrapper";
+    wrapper.style.width = "170px";
+    wrapper.style.height = "170px";
+
+    const canvas = document.createElement("canvas");
+    canvas.id = canvasId;
+    canvas.className = "gauge-canvas";
+    wrapper.appendChild(canvas);
+
+    const value = document.createElement("div");
+    value.id = valueId;
+    value.className = "gauge-value";
+    value.style.color = "#ffffff";
+    value.textContent = "0.00g";
+    wrapper.appendChild(value);
+
+    card.appendChild(wrapper);
+    return { card, canvas, value };
+}
 
 function initGMeter() {
     const canvas = document.getElementById("gMeterGauge");
     if (!canvas || !canvas.getContext) return;
 
-    // Résolution interne fixe : le CSS se charge de la mise à l'échelle
-    canvas.width = 300;
-    canvas.height = 300;
-    gMeterCtx = canvas.getContext("2d");
+    // Jauge principale réduite : elle affiche désormais le g total (norme)
+    const mainWrapper = canvas.closest(".gauge-wrapper");
+    if (mainWrapper) {
+        mainWrapper.style.width = "170px";
+        mainWrapper.style.height = "170px";
+    }
+    const mainCard = canvas.closest(".gauge-card");
+    if (mainCard) {
+        const h3 = mainCard.querySelector("h3");
+        if (h3) h3.textContent = "⚡ G total";
+    }
+    const totalValueEl = document.getElementById("gMeterValue");
+    if (totalValueEl) totalValueEl.style.color = "#ffffff";
 
-    // Ajout dynamique des lignes infos sous le cadran (sans toucher au HTML)
-    const card = canvas.closest(".gauge-card");
-    if (card) {
+    gauges.total = createGauge(canvas, 0, 2, null, null);
+
+    // Jauges dédiées : longitudinale et latérale
+    const container = document.querySelector(".gauges-container");
+    if (container) {
+        const lon = buildGaugeCard("⬆️ Longitudinale", "gMeterGaugeLon", "gMeterValueLon");
+        const lat = buildGaugeCard("↔️ Latérale", "gMeterGaugeLat", "gMeterValueLat");
+        container.appendChild(lon.card);
+        container.appendChild(lat.card);
+
+        gauges.lon = createGauge(lon.canvas, -1.5, 1.5, "◀ Freinage", "Accél. ▶");
+        gauges.lat = createGauge(lat.canvas, -1.5, 1.5, "◀ Gauche", "Droite ▶");
+
+        // Records longitudinaux sous la jauge dédiée
         if (!document.getElementById("gMeterPeaks")) {
             const peaks = document.createElement("p");
             peaks.id = "gMeterPeaks";
@@ -384,47 +464,77 @@ function initGMeter() {
             peaks.style.color = "var(--secondary, #ffcc00)";
             peaks.style.textAlign = "center";
             peaks.textContent = "Max : +0.00g    Freinage : 0.00g";
-            card.appendChild(peaks);
-        }
-        if (!document.getElementById("gMeterDebug")) {
-            const debug = document.createElement("p");
-            debug.id = "gMeterDebug";
-            debug.style.margin = "8px 0 0 0";
-            debug.style.fontSize = "0.85rem";
-            debug.style.color = "var(--muted, #a7a7a7)";
-            debug.style.textAlign = "center";
-            debug.textContent = "En attente de données GPS…";
-            card.appendChild(debug);
+            lon.card.appendChild(peaks);
         }
     }
 
-    drawGMeter();
+    // Ligne de diagnostic sous la jauge principale
+    if (mainCard && !document.getElementById("gMeterDebug")) {
+        const debug = document.createElement("p");
+        debug.id = "gMeterDebug";
+        debug.style.margin = "8px 0 0 0";
+        debug.style.fontSize = "0.85rem";
+        debug.style.color = "var(--muted, #a7a7a7)";
+        debug.style.textAlign = "center";
+        debug.textContent = "En attente de données GPS…";
+        mainCard.appendChild(debug);
+    }
+
+    drawGauges();
 }
 
-function updateGMeter(acceleration, speedMs, dt, speedSource) {
-    const valueEl = document.getElementById("gMeterValue");
+function updateGMeter(acceleration, lateralAccel, speedMs, dt, speedSource) {
+    const totalEl = document.getElementById("gMeterValue");
+    const lonEl = document.getElementById("gMeterValueLon");
+    const latEl = document.getElementById("gMeterValueLat");
     const debugEl = document.getElementById("gMeterDebug");
     const peaksEl = document.getElementById("gMeterPeaks");
 
+    // Longitudinale (lissée sur les 3 derniers échantillons)
+    let gLon = null;
     if (acceleration !== null) {
-        const g = acceleration / GRAVITY;
+        accelBuffer.push(acceleration / GRAVITY);
+        if (accelBuffer.length > 3) accelBuffer.shift();
+        gLon = accelBuffer.reduce((sum, v) => sum + v, 0) / accelBuffer.length;
 
-        if (valueEl) {
-            valueEl.textContent = `${g >= 0 ? "+" : ""}${g.toFixed(2)}g`;
-        }
+        if (lonEl) lonEl.textContent = `${gLon >= 0 ? "+" : ""}${gLon.toFixed(2)}g`;
 
         // Records de la session
-        if (g > gMeterPeakMax) gMeterPeakMax = g;
-        if (g < gMeterPeakMin) gMeterPeakMin = g;
+        if (gLon > gMeterPeakMax) gMeterPeakMax = gLon;
+        if (gLon < gMeterPeakMin) gMeterPeakMin = gLon;
         if (peaksEl) {
             peaksEl.textContent = `Max : +${gMeterPeakMax.toFixed(2)}g    Freinage : ${gMeterPeakMin.toFixed(2)}g`;
         }
+    }
 
-        // Lissage court (3 derniers échantillons) pour stabiliser l'aiguille
-        accelBuffer.push(g);
-        if (accelBuffer.length > 3) accelBuffer.shift();
-        const avg = accelBuffer.reduce((sum, v) => sum + v, 0) / accelBuffer.length;
-        gMeterTarget = Math.min(G_METER_MAX, Math.max(G_METER_MIN, avg));
+    // Latérale (déjà filtrée par moyenne exponentielle)
+    const gLat = latAccelEma !== null ? latAccelEma / GRAVITY : null;
+    if (gLat !== null && latEl) {
+        latEl.textContent = `${gLat >= 0 ? "+" : ""}${gLat.toFixed(2)}g`;
+    }
+
+    // Total : norme des deux composantes
+    let gTot = null;
+    if (gLon !== null && gLat !== null) {
+        gTot = Math.sqrt(gLon * gLon + gLat * gLat);
+    } else if (gLon !== null) {
+        gTot = Math.abs(gLon);
+    } else if (gLat !== null) {
+        gTot = Math.abs(gLat);
+    }
+    if (gTot !== null && totalEl) {
+        totalEl.textContent = `${gTot.toFixed(2)}g`;
+    }
+
+    // Cibles des aiguilles (bornées à la plage de chaque cadran)
+    if (gauges.total && gTot !== null) {
+        gauges.total.target = Math.min(2, Math.max(0, gTot));
+    }
+    if (gauges.lon && gLon !== null) {
+        gauges.lon.target = Math.min(G_METER_MAX, Math.max(G_METER_MIN, gLon));
+    }
+    if (gauges.lat && gLat !== null) {
+        gauges.lat.target = Math.min(G_METER_MAX, Math.max(G_METER_MIN, gLat));
     }
 
     // Ligne de diagnostic : ce que le navigateur fournit réellement
@@ -432,71 +542,67 @@ function updateGMeter(acceleration, speedMs, dt, speedSource) {
         debugEl.textContent =
             `v = ${speedMs !== null && speedMs !== undefined ? speedMs.toFixed(1) : "--"} m/s (${speedSource})` +
             ` · Δt = ${dt !== null ? dt.toFixed(2) : "--"} s` +
-            ` · a = ${acceleration !== null ? acceleration.toFixed(1) : "--"} m/s²` +
+            ` · a.lon = ${acceleration !== null ? acceleration.toFixed(1) : "--"} m/s²` +
+            ` · a.lat = ${latAccelEma !== null ? latAccelEma.toFixed(1) : "--"} m/s²` +
             ` · ${speedHistory.length} échantillons`;
     }
 
-    animateGMeter();
+    animateGauges();
 }
 
-function animateGMeter() {
-    if (!gMeterCtx) return;
+function animateGauges() {
+    const list = [gauges.total, gauges.lon, gauges.lat].filter(Boolean);
+    if (list.length === 0) return;
 
-    const diff = gMeterTarget - gMeterDisplay;
-    if (Math.abs(diff) < 0.005) {
-        gMeterDisplay = gMeterTarget;
-        drawGMeter();
-        return;
-    }
-    if (gMeterAnimScheduled) return;
-    gMeterAnimScheduled = true;
+    let pending = false;
+    list.forEach((g) => {
+        const d = g.target - g.display;
+        if (Math.abs(d) < 0.005) {
+            g.display = g.target;
+        } else {
+            g.display += d * 0.3;
+            pending = true;
+        }
+    });
+
+    list.forEach(drawGauge);
+
+    if (!pending || gaugeAnimScheduled) return;
+    gaugeAnimScheduled = true;
 
     // setTimeout plutôt que requestAnimationFrame : les navigateurs embarqués
     // throttlent parfois fortement les animations quand la page n'est pas active
     setTimeout(() => {
-        gMeterAnimScheduled = false;
-        const d = gMeterTarget - gMeterDisplay;
-        gMeterDisplay += d * 0.3;
-        drawGMeter();
-        animateGMeter();
+        gaugeAnimScheduled = false;
+        animateGauges();
     }, 50);
 }
 
-function drawGMeter() {
-    const ctx = gMeterCtx;
-    if (!ctx) return;
-
+function drawGauge(g) {
+    const ctx = g.ctx;
     const W = 300, H = 300;
     const cx = 150, cy = 160, R = 120;
 
-    // Angle (radians) : -1.5g à gauche (180°), 0g en haut (270°), +1.5g à droite (360°)
-    const gToAngle = (g) => Math.PI + ((g + 1.5) / 3) * Math.PI;
+    // Angle (radians) : min à gauche (180°), milieu en haut (270°), max à droite (360°)
+    const vToAngle = (v) => Math.PI + ((v - g.min) / (g.max - g.min)) * Math.PI;
 
     ctx.clearRect(0, 0, W, H);
 
-    // Zones colorées
-    const zones = [
-        { min: -1.5, max: -1.0, color: "#e74c3c" },
-        { min: -1.0, max: -0.4, color: "#f1c40f" },
-        { min: -0.4, max: 0.4, color: "#2ecc71" },
-        { min: 0.4, max: 1.0, color: "#f1c40f" },
-        { min: 1.0, max: 1.5, color: "#e74c3c" }
-    ];
-    zones.forEach((z) => {
-        ctx.beginPath();
-        ctx.strokeStyle = z.color;
-        ctx.lineWidth = 16;
-        ctx.arc(cx, cy, R, gToAngle(z.min), gToAngle(z.max));
-        ctx.stroke();
-    });
+    // Cadran monochrome
+    ctx.beginPath();
+    ctx.strokeStyle = "#525252";
+    ctx.lineWidth = 16;
+    ctx.arc(cx, cy, R, vToAngle(g.min), vToAngle(g.max));
+    ctx.stroke();
 
     // Graduations tous les 0.5g
     ctx.font = "12px 'Segoe UI', Tahoma, sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    for (let g = -1.5; g <= 1.5001; g += 0.5) {
-        const a = gToAngle(g);
+    const start = Math.ceil(g.min * 2) / 2;
+    for (let v = start; v <= g.max + 0.0001; v += 0.5) {
+        const a = vToAngle(v);
 
         ctx.beginPath();
         ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
@@ -505,20 +611,22 @@ function drawGMeter() {
         ctx.lineTo(cx + Math.cos(a) * (R - 12), cy + Math.sin(a) * (R - 12));
         ctx.stroke();
 
-        const label = g === 0 ? "0" : (g > 0 ? "+" + g.toFixed(1) : g.toFixed(1));
+        const label = v === 0 ? "0" : ((v > 0 && g.min < 0) ? "+" + v.toFixed(1) : v.toFixed(1));
         ctx.fillText(label, cx + Math.cos(a) * (R - 38), cy + Math.sin(a) * (R - 38));
     }
 
-    // Repères freinage / accélération
-    ctx.font = "11px 'Segoe UI', Tahoma, sans-serif";
-    ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
-    ctx.fillText("◀ Freinage", cx - 85, cy + 48);
-    ctx.fillText("Accél. ▶", cx + 85, cy + 48);
+    // Repères latéraux éventuels (freinage/accélération, gauche/droite)
+    if (g.leftLabel || g.rightLabel) {
+        ctx.font = "11px 'Segoe UI', Tahoma, sans-serif";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+        if (g.leftLabel) ctx.fillText(g.leftLabel, cx - 85, cy + 48);
+        if (g.rightLabel) ctx.fillText(g.rightLabel, cx + 85, cy + 48);
+    }
 
     // Aiguille
-    const a = gToAngle(gMeterDisplay);
+    const a = vToAngle(Math.min(g.max, Math.max(g.min, g.display)));
     ctx.beginPath();
-    ctx.strokeStyle = "#ff2d2d";
+    ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.moveTo(cx - Math.cos(a) * 18, cy - Math.sin(a) * 18);
@@ -530,9 +638,15 @@ function drawGMeter() {
     ctx.fillStyle = "#1e1e1e";
     ctx.arc(cx, cy, 10, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#ff2d2d";
+    ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 2;
     ctx.stroke();
+}
+
+function drawGauges() {
+    [gauges.total, gauges.lon, gauges.lat].forEach((g) => {
+        if (g) drawGauge(g);
+    });
 }
 
 function initSidebar() {
@@ -568,7 +682,7 @@ function initSidebar() {
                 if (page.id === "graph" && !speedChart) {
                     setTimeout(initCharts, 100);
                 }
-                if (page.id === "gauges" && !gMeterCtx) {
+                if (page.id === "gauges" && !gauges.total) {
                     setTimeout(initGMeter, 100);
                 }
             }
