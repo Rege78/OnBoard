@@ -82,9 +82,16 @@ function updateSpeed() {
                 const dtGps = (lastGpsTime !== null) ? (gpsTime - lastGpsTime) / 1000 : null;
                 if (dtGps !== null && dtGps > 0.1 && dtGps < 5) {
                     dt = dtGps;
-                } else if (dtClock > 0.1 && dtClock < 5) {
+                } else if (dtClock > 0.1 && dtClock < 10) {
                     dt = dtClock;
                 }
+            }
+
+            // Zone morte : en dessous de ~2 km/h, le GPS « bruite » autour de zéro.
+            // On force la vitesse à 0 pour obtenir des jauges calmes à l'arrêt.
+            if (speed !== null && speed !== undefined && speed < 0.6) {
+                speed = 0;
+                speedSource = "stop";
             }
 
             // --- Vitesse (m/s) : celle du GPS, sinon distance parcourue / durée ---
@@ -108,8 +115,16 @@ function updateSpeed() {
                 let acceleration = null;
                 if (lastSpeedMs !== null && dt !== null) {
                     acceleration = (speed - lastSpeedMs) / dt;
+                    // À l'arrêt ou presque : pas de micro-variations parasites
+                    if (speed < 0.6 && lastSpeedMs < 0.6) acceleration = 0;
                 }
                 lastSpeedMs = speed;
+
+                // Recalage des filtres à l'arrêt : retour progressif à zéro
+                if (speed < 0.6) {
+                    if (emaAccel !== null) emaAccel = emaAccel * 0.5;
+                    if (latAccelEma !== null) latAccelEma = latAccelEma * 0.5;
+                }
 
                 // Mise à jour de l'historique
                 const now = new Date();
@@ -130,6 +145,8 @@ function updateSpeed() {
                     dTheta = ((dTheta + Math.PI * 3) % (Math.PI * 2)) - Math.PI; // repliement -π..π
                     const candidate = speed * (dTheta / dt);
                     if (Math.abs(candidate) < 30) lateralAccel = candidate; // garde-fou
+                    // À l'arrêt, le cap GPS tourne au gré du bruit : on force zéro
+                    if (speed < 0.6) lateralAccel = 0;
                 }
                 lastHeadingRad = (coords.heading !== null) ? coords.heading * Math.PI / 180 : null;
                 if (lateralAccel !== null && dt !== null) {
@@ -395,13 +412,9 @@ function createGauge(canvas, min, max, leftLabel, rightLabel) {
     };
 }
 
-function buildGaugeCard(title, canvasId, valueId) {
+function buildGaugeCard(canvasId, valueId) {
     const card = document.createElement("div");
     card.className = "gauge-card";
-
-    const h3 = document.createElement("h3");
-    h3.textContent = title;
-    card.appendChild(h3);
 
     const wrapper = document.createElement("div");
     wrapper.className = "gauge-wrapper";
@@ -424,6 +437,25 @@ function buildGaugeCard(title, canvasId, valueId) {
     return { card, canvas, value };
 }
 
+function moveTitleBelowGauge(card, title, subtitle) {
+    // Retire le titre d'origine (caché par le dépassement de la jauge) et le
+    // recrée sous la jauge, en position flux normal
+    const h3 = card.querySelector("h3");
+    if (h3) h3.remove();
+    if (card.querySelector(".gauge-title")) return;
+
+    const t = document.createElement("p");
+    t.className = "gauge-title";
+    t.textContent = title;
+    t.style.margin = "14px 0 0 0";
+    t.style.fontSize = "1.05rem";
+    t.style.fontWeight = "600";
+    t.style.color = "var(--secondary, #ffcc00)";
+    t.style.textAlign = "center";
+    if (subtitle) t.dataset.subtitle = subtitle;
+    card.appendChild(t);
+}
+
 function initGMeter() {
     const canvas = document.getElementById("gMeterGauge");
     if (!canvas || !canvas.getContext) return;
@@ -436,21 +468,23 @@ function initGMeter() {
     }
     const mainCard = canvas.closest(".gauge-card");
     if (mainCard) {
-        const h3 = mainCard.querySelector("h3");
-        if (h3) h3.textContent = "⚡ G total";
+        moveTitleBelowGauge(mainCard, "⚡ G total");
     }
     const totalValueEl = document.getElementById("gMeterValue");
     if (totalValueEl) totalValueEl.style.color = "#ffffff";
 
-    gauges.total = createGauge(canvas, 0, 2, null, null);
+    gauges.total = createGauge(canvas, -2, 2, null, null);
 
     // Jauges dédiées : longitudinale et latérale
     const container = document.querySelector(".gauges-container");
     if (container) {
-        const lon = buildGaugeCard("⬆️ Longitudinale", "gMeterGaugeLon", "gMeterValueLon");
-        const lat = buildGaugeCard("↔️ Latérale", "gMeterGaugeLat", "gMeterValueLat");
+        const lon = buildGaugeCard("gMeterGaugeLon", "gMeterValueLon");
+        const lat = buildGaugeCard("gMeterGaugeLat", "gMeterValueLat");
         container.appendChild(lon.card);
         container.appendChild(lat.card);
+
+        moveTitleBelowGauge(lon.card, "⬆️ Longitudinale");
+        moveTitleBelowGauge(lat.card, "↔️ Latérale");
 
         gauges.lon = createGauge(lon.canvas, -1.5, 1.5, "◀ Freinage", "Accél. ▶");
         gauges.lat = createGauge(lat.canvas, -1.5, 1.5, "◀ Gauche", "Droite ▶");
@@ -514,21 +548,23 @@ function updateGMeter(acceleration, lateralAccel, speedMs, dt, speedSource) {
     }
 
     // Total : norme des deux composantes
-    let gTot = null;
-    if (gLon !== null && gLat !== null) {
-        gTot = Math.sqrt(gLon * gLon + gLat * gLat);
-    } else if (gLon !== null) {
-        gTot = Math.abs(gLon);
-    } else if (gLat !== null) {
-        gTot = Math.abs(gLat);
-    }
+    let gTot = gTotSigned;
     if (gTot !== null && totalEl) {
-        totalEl.textContent = `${gTot.toFixed(2)}g`;
+        totalEl.textContent = `${gTot >= 0 ? "+" : ""}${gTot.toFixed(2)}g`;
     }
 
     // Cibles des aiguilles (bornées à la plage de chaque cadran)
-    if (gauges.total && gTot !== null) {
-        gauges.total.target = Math.min(2, Math.max(0, gTot));
+    // G total signé : positif (accélération) à droite, négatif (freinage) à gauche
+    let gTotSigned = null;
+    if (gLon !== null) {
+        gTotSigned = (gLat !== null)
+            ? Math.sign(gLon || gLat) * Math.sqrt(gLon * gLon + gLat * gLat)
+            : gLon;
+    } else if (gLat !== null) {
+        gTotSigned = gLat;
+    }
+    if (gauges.total && gTotSigned !== null) {
+        gauges.total.target = Math.min(2, Math.max(-2, gTotSigned));
     }
     if (gauges.lon && gLon !== null) {
         gauges.lon.target = Math.min(G_METER_MAX, Math.max(G_METER_MIN, gLon));
