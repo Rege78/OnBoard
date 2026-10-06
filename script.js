@@ -1,5 +1,6 @@
 let currentPosition = null;
 let speedHistory = [];
+let speedFilteredHistory = [];
 let accelerationHistory = [];
 let accelerationFilteredHistory = [];
 let timeHistory = [];
@@ -19,10 +20,11 @@ let lastLat = null;
 let lastLon = null;
 let accelBuffer = [];          // lissage court pour l'aiguille
 let emaAccel = null;           // accélération filtrée (moyenne exponentielle)
+let emaSpeed = null;           // vitesse filtrée (moyenne exponentielle)
 let latAccelEma = null;        // accélération latérale filtrée (m/s²)
 let lastHeadingRad = null;     // dernier cap GPS (radians)
 
-const MAX_HISTORY = 120; // Garde jusqu'à 120 points d'historique
+const MAX_HISTORY = 600; // Garde jusqu'à 600 points d'historique (~10 min à 1 échantillon/s)
 const FILTER_TAU = 2.5; // Constante de temps du filtre d'accélération (s)
 const LAT_TAU = 1.5; // Constante de temps du filtre d'accélération latérale (s)
 const GRAVITY = 9.81; // Pesanteur (m/s²)
@@ -155,6 +157,14 @@ function updateSpeed() {
                 }
 
                 speedHistory.push(speedKmh);
+
+                // Vitesse filtrée (moyenne exponentielle, même principe que l'accélération)
+                if (dt !== null) {
+                    const alphaSpeed = 1 - Math.exp(-dt / FILTER_TAU);
+                    emaSpeed = (emaSpeed === null) ? speed : emaSpeed + alphaSpeed * (speed - emaSpeed);
+                }
+                speedFilteredHistory.push(emaSpeed !== null ? Math.round(emaSpeed * 3.6) : null);
+
                 accelerationHistory.push(acceleration !== null ? Math.round(acceleration * 10) / 10 : null);
                 accelerationFilteredHistory.push(emaAccel !== null ? Math.round(emaAccel * 10) / 10 : null);
                 timeHistory.push(timeLabel);
@@ -162,6 +172,7 @@ function updateSpeed() {
                 // Limiter l'historique complet
                 if (speedHistory.length > MAX_HISTORY) {
                     speedHistory.shift();
+                    speedFilteredHistory.shift();
                     accelerationHistory.shift();
                     accelerationFilteredHistory.shift();
                     timeHistory.shift();
@@ -227,6 +238,7 @@ function getVisibleData() {
     return {
         labels: timeHistory.slice(startIndex),
         speed: speedHistory.slice(startIndex),
+        speedFiltered: speedFilteredHistory.slice(startIndex),
         acceleration: accelerationHistory.slice(startIndex),
         filtered: accelerationFilteredHistory.slice(startIndex)
     };
@@ -237,6 +249,12 @@ function initCharts() {
     const accelerationCtx = document.getElementById("accelerationChart");
 
     if (!speedCtx || !accelerationCtx) return;
+
+    // Hauteur fixe pour que les deux graphiques tiennent à l'écran du véhicule
+    speedCtx.style.height = "260px";
+    speedCtx.style.width = "100%";
+    accelerationCtx.style.height = "260px";
+    accelerationCtx.style.width = "100%";
 
     const visibleData = getVisibleData();
 
@@ -254,18 +272,32 @@ function initCharts() {
                     borderWidth: 2,
                     tension: 0.3,
                     fill: true
+                },
+                {
+                    label: '🌀 Vitesse filtrée (km/h)',
+                    data: visibleData.speedFiltered,
+                    borderColor: 'rgb(0, 191, 255)',
+                    backgroundColor: 'rgba(0, 191, 255, 0.05)',
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    spanGaps: true,
+                    borderDash: [6, 3],
+                    pointRadius: 0
                 }
             ]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             interaction: {
                 mode: 'index',
                 intersect: false
             },
             plugins: {
                 legend: {
+                    position: 'top',
+                    align: 'end',
                     labels: {
                         color: 'rgba(255, 255, 255, 0.8)',
                         font: { size: 12 }
@@ -335,13 +367,15 @@ function initCharts() {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             interaction: {
                 mode: 'index',
                 intersect: false
             },
             plugins: {
                 legend: {
+                    position: 'top',
+                    align: 'end',
                     labels: {
                         color: 'rgba(255, 255, 255, 0.8)',
                         font: { size: 12 }
@@ -387,6 +421,7 @@ function updateCharts() {
 
     speedChart.data.labels = visibleData.labels;
     speedChart.data.datasets[0].data = visibleData.speed;
+    speedChart.data.datasets[1].data = visibleData.speedFiltered;
     speedChart.update('none');
 
     accelerationChart.data.labels = visibleData.labels;
@@ -758,8 +793,52 @@ function initSidebar() {
 }
 
 function initDataPointsSelector() {
-    const selector = document.getElementById("dataPointsSelector");
-    if (!selector) return;
+    // Le sélecteur n'existe pas dans le HTML : on le crée au-dessus des graphiques
+    let selector = document.getElementById("dataPointsSelector");
+    if (!selector) {
+        const graphContainer = document.querySelector(".graph-container");
+        if (!graphContainer) return;
+
+        const wrap = document.createElement("div");
+        wrap.style.display = "flex";
+        wrap.style.justifyContent = "flex-end";
+        wrap.style.alignItems = "center";
+        wrap.style.gap = "10px";
+        wrap.style.marginBottom = "10px";
+
+        const label = document.createElement("label");
+        label.textContent = "Durée affichée :";
+        label.style.color = "var(--muted, #a7a7a7)";
+        label.style.fontSize = "0.95rem";
+
+        selector = document.createElement("select");
+        selector.id = "dataPointsSelector";
+        selector.style.background = "var(--card, #1e1e1e)";
+        selector.style.color = "var(--text, #fff)";
+        selector.style.border = "1px solid var(--card-border, rgba(255,255,255,0.08))";
+        selector.style.borderRadius = "8px";
+        selector.style.padding = "6px 10px";
+        selector.style.fontSize = "0.95rem";
+
+        // Durée affichable en points GPS (~1 échantillon/seconde)
+        [
+            { value: 30, label: "30 s" },
+            { value: 60, label: "1 min" },
+            { value: 120, label: "2 min" },
+            { value: 300, label: "5 min" },
+            { value: 600, label: "10 min" }
+        ].forEach((opt) => {
+            const o = document.createElement("option");
+            o.value = String(opt.value);
+            o.textContent = opt.label;
+            if (opt.value === currentMaxDataPoints) o.selected = true;
+            selector.appendChild(o);
+        });
+
+        wrap.appendChild(label);
+        wrap.appendChild(selector);
+        graphContainer.insertBefore(wrap, graphContainer.firstChild);
+    }
 
     selector.addEventListener("change", (e) => {
         currentMaxDataPoints = parseInt(e.target.value);
