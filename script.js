@@ -132,8 +132,8 @@ function updateSpeed() {
                 const now = new Date();
                 const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-                // Filtre passe-bas (moyenne exponentielle) : courbe lissée, légèrement retardée,
-                // mais débarrassée du bruit GPS. alpha s'adapte à l'intervalle réel entre 2 échantillons.
+                // Filtre passe-bas (moyenne exponentielle) : courbe lisse, un peu retardee.
+                // alpha s'adapte a l'intervalle reel entre 2 echantillons.
                 if (acceleration !== null && dt !== null) {
                     const alpha = 1 - Math.exp(-dt / FILTER_TAU);
                     emaAccel = (emaAccel === null) ? acceleration : emaAccel + alpha * (acceleration - emaAccel);
