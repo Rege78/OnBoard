@@ -248,10 +248,20 @@ function initCharts() {
 
     if (!speedCtx || !accelerationCtx) return;
 
-    // Hauteur fixe pour que les deux graphiques tiennent à l'écran du véhicule
-    speedCtx.style.height = "260px";
+    // Hauteurs calculees pour que les DEUX graphiques + le header tiennent
+    // dans l'ecran du vehicule, sans devoir scroller.
+    // On neutralise aussi le min-height:400px du .graph-container (style.css).
+    const graphContainer = speedCtx.closest(".graph-container");
+    if (graphContainer) graphContainer.style.minHeight = "0";
+
+    const availH = (typeof window !== "undefined" && window.innerHeight)
+        ? window.innerHeight
+        : 800;
+    // Ecran = header/page (~140px) + 2 graphes + marges (~40px) + footer (~70px)
+    const chartH = Math.max(150, Math.min(320, Math.round((availH - 260) / 2)));
+    speedCtx.style.height = chartH + "px";
     speedCtx.style.width = "100%";
-    accelerationCtx.style.height = "260px";
+    accelerationCtx.style.height = chartH + "px";
     accelerationCtx.style.width = "100%";
 
     const visibleData = getVisibleData();
