@@ -91,12 +91,6 @@ function updateSpeed() {
 
             // Zone morte : en dessous de ~2 km/h, le GPS « bruite » autour de zéro.
             // On force la vitesse à 0 pour obtenir des jauges calmes à l'arrêt.
-            if (speed !== null && speed !== undefined && speed < 0.6) {
-                speed = 0;
-                speedSource = "stop";
-            }
-
-            // --- Vitesse (m/s) : celle du GPS, sinon distance parcourue / durée ---
             let speed = coords.speed;
             let speedSource = "gps";
             if ((speed === null || speed === undefined) && lastLat !== null && dt !== null) {
@@ -106,6 +100,10 @@ function updateSpeed() {
                     speed = v;
                     speedSource = "dist";
                 }
+            }
+            if (speed !== null && speed !== undefined && speed < 0.6) {
+                speed = 0;
+                speedSource = "stop";
             }
 
             if (speed !== null && speed !== undefined) {
@@ -582,14 +580,8 @@ function updateGMeter(acceleration, lateralAccel, speedMs, dt, speedSource) {
         latEl.textContent = `${gLat >= 0 ? "+" : ""}${gLat.toFixed(2)}g`;
     }
 
-    // Total : norme des deux composantes
-    let gTot = gTotSigned;
-    if (gTot !== null && totalEl) {
-        totalEl.textContent = `${gTot >= 0 ? "+" : ""}${gTot.toFixed(2)}g`;
-    }
-
-    // Cibles des aiguilles (bornées à la plage de chaque cadran)
-    // G total signé : positif (accélération) à droite, négatif (freinage) à gauche
+    // Total : norme signee des deux composantes
+    // G total signe : positif (acceleration) a droite, negatif (freinage) a gauche
     let gTotSigned = null;
     if (gLon !== null) {
         gTotSigned = (gLat !== null)
@@ -598,6 +590,13 @@ function updateGMeter(acceleration, lateralAccel, speedMs, dt, speedSource) {
     } else if (gLat !== null) {
         gTotSigned = gLat;
     }
+
+    const gTot = gTotSigned;
+    if (gTot !== null && totalEl) {
+        totalEl.textContent = `${gTot >= 0 ? "+" : ""}${gTot.toFixed(2)}g`;
+    }
+
+    // Cibles des aiguilles (bornées à la plage de chaque cadran)
     if (gauges.total && gTotSigned !== null) {
         gauges.total.target = Math.min(2, Math.max(-2, gTotSigned));
     }
